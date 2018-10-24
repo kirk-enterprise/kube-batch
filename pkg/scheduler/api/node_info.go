@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 
+	"github.com/kubernetes-sigs/kube-batch/pkg/kirkutil"
 	"k8s.io/api/core/v1"
 )
 
@@ -55,15 +56,16 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		}
 	}
 
+	allocatable := kirkutil.UpdateAllocatable(node.Status.Allocatable, node)
 	return &NodeInfo{
 		Name: node.Name,
 		Node: node,
 
 		Releasing: EmptyResource(),
-		Idle:      NewResource(node.Status.Allocatable),
+		Idle:      NewResource(allocatable),
 		Used:      EmptyResource(),
 
-		Allocatable: NewResource(node.Status.Allocatable),
+		Allocatable: NewResource(allocatable),
 		Capability:  NewResource(node.Status.Capacity),
 
 		Tasks: make(map[TaskID]*TaskInfo),
@@ -84,9 +86,10 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.Name = node.Name
 	ni.Node = node
 
-	ni.Allocatable = NewResource(node.Status.Allocatable)
+	allocatable := kirkutil.UpdateAllocatable(node.Status.Allocatable, node)
+	ni.Allocatable = NewResource(allocatable)
 	ni.Capability = NewResource(node.Status.Capacity)
-	ni.Idle = NewResource(node.Status.Allocatable)
+	ni.Idle = NewResource(allocatable)
 
 	for _, task := range ni.Tasks {
 		if task.Status == Releasing {
@@ -181,8 +184,10 @@ func (ni NodeInfo) String() string {
 		i++
 	}
 
-	return fmt.Sprintf("Node (%s): idle <%v>, used <%v>, releasing <%v>%s",
-		ni.Name, ni.Idle, ni.Used, ni.Releasing, res)
+	return fmt.Sprintf("Node (%s): cpu commit ratio <%v>, idle <%v>, used <%v>, releasing <%v>%s",
+		ni.Name,
+		kirkutil.GetCPUOvercommitRatio(ni.Node),
+		ni.Idle, ni.Used, ni.Releasing, res)
 
 }
 
